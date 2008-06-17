@@ -1,0 +1,49 @@
+require 'rubygems'
+require 'feed-normalizer'
+require 'open-uri'
+require 'hpricot'
+require 'md5'
+require 'tempfile'
+require 'yaml'
+require 'meow'
+
+
+DB = File.join(ENV['HOME'], '.meowhub')
+
+avatar_cache = Hash.new { |h,k|
+  path = File.join(Dir::tmpdir, "#{k}.jpeg")
+  unless File.exists?(path)
+    File.open(path, 'wb') { |tf|
+      tf.write(open("http://gravatar.com/avatar/#{k}").read)
+    }
+  end
+  h[k] = path
+}
+
+meep = Meow.new('Github Feed')
+url  = ARGV[0]
+
+unless url || File.exists?(DB)
+  puts "usage: #{$0} URL"
+  exit(1)
+end
+
+urls_to_seen = File.exists?(DB) ? YAML.load_file(DB) : {}
+urls_to_seen[url] ||= [] if url
+
+(url ? [url] : urls_to_seen.keys).each do |xml_feed|
+  feed = FeedNormalizer::FeedNormalizer.parse(open(xml_feed))
+  
+  seen = (urls_to_seen[xml_feed] ||= [])
+  feed.entries.each do |entry|
+    next if seen.include?(entry.id)
+    email_md5 = Digest::MD5.hexdigest(entry.author.split(/\n/)[2].strip)
+    icon = Meow.import_image(avatar_cache[email_md5])
+  
+    doc = Hpricot.parse(entry.content)
+    doc.search('//a').remove
+    meep.notify(entry.title, doc.inner_text.strip, :icon => icon)
+    urls_to_seen[xml_feed] << entry.id
+  end
+end
+File.open(DB, 'wb') { |f| f.write(YAML.dump(urls_to_seen)) }
