@@ -4,6 +4,7 @@ Display github news as growl notifications.
 
 == Installation
 
+  sudo gem install meow
   sudo gem install aaronp-meowhub --source=http://gems.github.com
   
 == Usage
